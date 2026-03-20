@@ -75,6 +75,78 @@
     .upload-zone input { display: none; }
     .upload-zone p { margin-bottom: 0.5rem; }
     .upload-zone .hint { color: var(--muted); font-size: 0.85rem; }
+    .upload-zone.has-file {
+      border-color: var(--success);
+      background: rgba(63, 185, 80, 0.08);
+    }
+    .upload-zone.has-file .placeholder { display: none; }
+    .upload-zone .file-preview { display: none; }
+    .upload-zone.has-file .file-preview { display: block; }
+    .file-preview {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      text-align: left;
+    }
+    .file-preview .icon {
+      font-size: 2rem;
+      opacity: 0.8;
+    }
+    .file-preview .info { flex: 1; min-width: 0; }
+    .file-preview .name {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-preview .size { font-size: 0.8rem; color: var(--muted); }
+    .file-preview .remove {
+      padding: 0.35rem 0.6rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .file-preview .remove:hover { color: var(--error); border-color: var(--error); }
+    .progress-wrap {
+      margin-top: 1rem;
+      display: none;
+    }
+    .progress-wrap.active { display: block; }
+    .progress-wrap .label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar {
+      height: 8px;
+      background: var(--surface);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+    .progress-wrap.processing .progress-bar .fill {
+      width: 100%;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
     .opts {
       display: flex;
       gap: 1.5rem;
@@ -150,8 +222,18 @@
 
     <div class="upload-zone" id="zone">
       <input type="file" id="file" accept=".mp4,.mkv,.avi,.mov,.webm,.mp3,.wav,.m4a,.flac,.ogg,.aac,.wma,.flv,.wmv">
-      <p>Klik atau drag & drop file video/audio</p>
-      <p class="hint">MP4, MKV, AVI, MOV, WebM, MP3, WAV, M4A, FLAC, dll.</p>
+      <div class="placeholder">
+        <p>Klik atau drag & drop file video/audio</p>
+        <p class="hint">MP4, MKV, AVI, MOV, WebM, MP3, WAV, M4A, FLAC, dll.</p>
+      </div>
+      <div class="file-preview">
+        <span class="icon">🎬</span>
+        <div class="info">
+          <div class="name" id="fileName">—</div>
+          <div class="size" id="fileSize">—</div>
+        </div>
+        <button type="button" class="remove" id="removeFile">Hapus</button>
+      </div>
     </div>
 
     <div class="opts">
@@ -178,6 +260,16 @@
     </div>
 
     <button class="btn" id="submit" disabled>Proses</button>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="label">
+        <span id="progressLabel">Mengunggah...</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="fill" id="progressFill"></div>
+      </div>
+    </div>
 
     <div class="log-box" id="log"></div>
     <div class="downloads" id="downloads"></div>
@@ -216,10 +308,31 @@
     });
     fileInput.addEventListener('change', onFileSelect);
 
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
     function onFileSelect() {
       selectedFile = fileInput.files[0] || null;
       submitBtn.disabled = !selectedFile;
+      zone.classList.toggle('has-file', !!selectedFile);
+      if (selectedFile) {
+        document.getElementById('fileName').textContent = selectedFile.name;
+        document.getElementById('fileSize').textContent = formatSize(selectedFile.size);
+      }
     }
+
+    document.getElementById('removeFile').addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.value = '';
+      selectedFile = null;
+      submitBtn.disabled = true;
+      zone.classList.remove('has-file');
+      document.getElementById('fileName').textContent = '—';
+      document.getElementById('fileSize').textContent = '—';
+    });
 
     function log(msg, isErr = false) {
       const span = document.createElement('span');
@@ -234,41 +347,87 @@
       downloadsEl.innerHTML = '';
     }
 
-    submitBtn.addEventListener('click', async () => {
+    function setProgress(pct, label, isProcessing) {
+      const wrap = document.getElementById('progressWrap');
+      const fill = document.getElementById('progressFill');
+      const pctEl = document.getElementById('progressPct');
+      const labelEl = document.getElementById('progressLabel');
+      wrap.classList.add('active');
+      wrap.classList.toggle('processing', !!isProcessing);
+      fill.style.width = pct + '%';
+      pctEl.textContent = isProcessing ? '...' : Math.round(pct) + '%';
+      labelEl.textContent = label || 'Mengunggah...';
+    }
+
+    function hideProgress() {
+      document.getElementById('progressWrap').classList.remove('active', 'processing');
+    }
+
+    submitBtn.addEventListener('click', () => {
       if (!selectedFile) return;
       clearLog();
       submitBtn.disabled = true;
       log('Mengunggah file...');
+      setProgress(0, 'Mengunggah...', false);
 
       const form = new FormData();
       form.append('file', selectedFile);
       form.append('model_size', document.getElementById('model').value);
       form.append('format', document.getElementById('format').value);
 
-      try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: form,
-        });
-        const data = await res.json();
+      const xhr = new XMLHttpRequest();
 
-        data.logs.forEach(l => log(l, l.includes('Error') || l.includes('Traceback')));
-        if (data.error) log(data.error, true);
-
-        if (data.success && data.downloads?.length) {
-          data.downloads.forEach(d => {
-            const a = document.createElement('a');
-            a.href = d.url;
-            a.download = d.filename;
-            a.textContent = 'Download ' + d.format.toUpperCase();
-            downloadsEl.appendChild(a);
-          });
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = (e.loaded / e.total) * 100;
+          setProgress(pct, 'Mengunggah...', false);
+          if (pct >= 100) {
+            setProgress(100, 'Memproses (FFmpeg → Whisper)...', true);
+          }
+        } else if (e.loaded > 0) {
+          setProgress(50, 'Mengunggah...', true);
         }
-      } catch (e) {
-        log('Network error: ' + e.message, true);
-      } finally {
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            data.logs.forEach(l => log(l, l.includes('Error') || l.includes('Traceback')));
+            if (data.error) log(data.error, true);
+
+            if (data.success && data.downloads?.length) {
+              data.downloads.forEach(d => {
+                const a = document.createElement('a');
+                a.href = d.url;
+                a.download = d.filename;
+                a.textContent = 'Download ' + d.format.toUpperCase();
+                downloadsEl.appendChild(a);
+              });
+            }
+          } catch (e) {
+            log('Error parsing response: ' + e.message, true);
+          }
+        } else {
+          log('Upload gagal: ' + xhr.status, true);
+        }
+        hideProgress();
         submitBtn.disabled = false;
-      }
+      });
+
+      xhr.addEventListener('error', () => {
+        log('Network error', true);
+        hideProgress();
+        submitBtn.disabled = false;
+      });
+
+      xhr.addEventListener('abort', () => {
+        hideProgress();
+        submitBtn.disabled = false;
+      });
+
+      xhr.open('POST', '/api/upload');
+      xhr.send(form);
     });
   </script>
 </body>
