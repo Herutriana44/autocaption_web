@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autocaption Web - Subtitle Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --success: #3fb950;
+      --error: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+    }
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .flow span { color: var(--accent); }
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 2.5rem;
+      text-align: center;
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.05);
+    }
+    .upload-zone input { display: none; }
+    .upload-zone p { margin-bottom: 0.5rem; }
+    .upload-zone .hint { color: var(--muted); font-size: 0.85rem; }
+    .opts {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .opt label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .opt select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      font-family: inherit;
+    }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .log-box {
+      margin-top: 2rem;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      max-height: 320px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-box:empty { display: none; }
+    .log-box .err { color: var(--error); }
+    .log-box .ok { color: var(--success); }
+    .downloads {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .downloads a {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      background: var(--success);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      transition: opacity 0.2s;
+    }
+    .downloads a:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Autocaption Web</h1>
+    <p class="subtitle">Generate subtitle (SRT/VTT) dari video atau audio</p>
+    <div class="flow">
+      Video/Audio → FFmpeg (extract) → Whisper (ASR) → SRT / VTT
+    </div>
+
+    <div class="upload-zone" id="zone">
+      <input type="file" id="file" accept=".mp4,.mkv,.avi,.mov,.webm,.mp3,.wav,.m4a,.flac,.ogg,.aac,.wma,.flv,.wmv">
+      <p>Klik atau drag & drop file video/audio</p>
+      <p class="hint">MP4, MKV, AVI, MOV, WebM, MP3, WAV, M4A, FLAC, dll.</p>
+    </div>
+
+    <div class="opts">
+      <div class="opt">
+        <label>Model Whisper</label>
+        <select id="model">
+          <option value="tiny">Tiny (cepat)</option>
+          <option value="base" selected>Base</option>
+          <option value="small">Small</option>
+          <option value="medium">Medium</option>
+          <option value="large">Large (akurat)</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label>Format Subtitle</label>
+        <select id="format">
+          <option value="srt">SRT</option>
+          <option value="vtt">VTT</option>
+          <option value="both">SRT + VTT</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn" id="submit" disabled>Proses</button>
+
+    <div class="log-box" id="log"></div>
+    <div class="downloads" id="downloads"></div>
+  </div>
+
+  <script>
+    const zone = document.getElementById('zone');
+    const fileInput = document.getElementById('file');
+    const submitBtn = document.getElementById('submit');
+    const logBox = document.getElementById('log');
+    const downloadsEl = document.getElementById('downloads');
+
+    let selectedFile = null;
+
+    zone.addEventListener('click', () => fileInput.click());
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        onFileSelect();
+      }
+    });
+    fileInput.addEventListener('change', onFileSelect);
+
+    function onFileSelect() {
+      selectedFile = fileInput.files[0] || null;
+      submitBtn.disabled = !selectedFile;
+    }
+
+    function log(msg, isErr = false) {
+      const span = document.createElement('span');
+      span.textContent = msg + '\n';
+      if (isErr) span.className = 'err';
+      logBox.appendChild(span);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function clearLog() {
+      logBox.innerHTML = '';
+      downloadsEl.innerHTML = '';
+    }
+
+    submitBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      clearLog();
+      submitBtn.disabled = true;
+      log('Mengunggah file...');
+
+      const form = new FormData();
+      form.append('file', selectedFile);
+      form.append('model_size', document.getElementById('model').value);
+      form.append('format', document.getElementById('format').value);
+
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: form,
+        });
+        const data = await res.json();
+
+        data.logs.forEach(l => log(l, l.includes('Error') || l.includes('Traceback')));
+        if (data.error) log(data.error, true);
+
+        if (data.success && data.downloads?.length) {
+          data.downloads.forEach(d => {
+            const a = document.createElement('a');
+            a.href = d.url;
+            a.download = d.filename;
+            a.textContent = 'Download ' + d.format.toUpperCase();
+            downloadsEl.appendChild(a);
+          });
+        }
+      } catch (e) {
+        log('Network error: ' + e.message, true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
