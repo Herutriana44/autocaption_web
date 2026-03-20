@@ -49,6 +49,16 @@
       color: var(--muted);
     }
     .flow span { color: var(--accent); }
+    .device-info {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface);
+      border-radius: 8px;
+      border-left: 3px solid var(--accent);
+    }
+    .device-info.gpu { border-left-color: var(--success); }
     .upload-zone {
       border: 2px dashed var(--border);
       border-radius: 12px;
@@ -136,6 +146,7 @@
     <div class="flow">
       Video/Audio → FFmpeg (extract) → Whisper (ASR) → SRT / VTT
     </div>
+    <div class="device-info" id="deviceInfo"></div>
 
     <div class="upload-zone" id="zone">
       <input type="file" id="file" accept=".mp4,.mkv,.avi,.mov,.webm,.mp3,.wav,.m4a,.flac,.ogg,.aac,.wma,.flv,.wmv">
@@ -148,10 +159,12 @@
         <label>Model Whisper</label>
         <select id="model">
           <option value="tiny">Tiny (cepat)</option>
-          <option value="base" selected>Base</option>
+          <option value="base">Base</option>
           <option value="small">Small</option>
           <option value="medium">Medium</option>
-          <option value="large">Large (akurat)</option>
+          <option value="large" selected>Large (akurat, GPU recommended)</option>
+          <option value="large-v2">Large-v2</option>
+          <option value="large-v3">Large-v3</option>
         </select>
       </div>
       <div class="opt">
@@ -178,6 +191,17 @@
     const downloadsEl = document.getElementById('downloads');
 
     let selectedFile = null;
+
+    // Tampilkan status GPU
+    fetch('/api/device').then(r => r.json()).then(d => {
+      const el = document.getElementById('deviceInfo');
+      if (d.device === 'cuda') {
+        el.textContent = `GPU: ${d.gpu_name} (fp16 aktif)`;
+        el.classList.add('gpu');
+      } else {
+        el.textContent = 'CPU mode (GPU tidak terdeteksi)';
+      }
+    }).catch(() => {});
 
     zone.addEventListener('click', () => fileInput.click());
     zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });

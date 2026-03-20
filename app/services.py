@@ -4,8 +4,31 @@ Subtitle generation service: FFmpeg → Whisper → SRT/VTT
 import os
 import subprocess
 from pathlib import Path
+
+import torch
 import whisper
 from whisper.utils import get_writer
+
+
+def get_device_info(log_callback=None):
+    """
+    Auto-detect GPU availability.
+    Returns (device, use_fp16).
+    """
+    def _log(msg: str):
+        if log_callback:
+            log_callback(f"[Device] {msg}")
+
+    if torch.cuda.is_available():
+        device = "cuda"
+        use_fp16 = True
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "N/A"
+        _log(f"GPU terdeteksi: {gpu_name} → menggunakan CUDA + fp16")
+    else:
+        device = "cpu"
+        use_fp16 = False
+        _log("GPU tidak terdeteksi → menggunakan CPU (fp32)")
+    return device, use_fp16
 
 
 def extract_audio(video_path: str, output_path: str, log_callback=None) -> str:
@@ -48,19 +71,20 @@ def extract_audio(video_path: str, output_path: str, log_callback=None) -> str:
 
 def transcribe_with_whisper(
     audio_path: str,
-    model_size: str = "base",
+    model_size: str = "large",
     log_callback=None
 ) -> dict:
-    """Transcribe audio using Whisper ASR."""
+    """Transcribe audio using Whisper ASR. Auto GPU detect."""
     def _log(msg: str):
         if log_callback:
             log_callback(f"[Whisper] {msg}")
 
-    _log(f"Memuat model Whisper ({model_size})...")
+    device, use_fp16 = get_device_info(log_callback)
+    _log(f"Memuat model Whisper ({model_size}) di {device}...")
     try:
-        model = whisper.load_model(model_size)
-        _log("Model dimuat. Memulai transkripsi...")
-        result = model.transcribe(audio_path, language=None, fp16=False)
+        model = whisper.load_model(model_size, device=device)
+        _log(f"Model dimuat. Memulai transkripsi (fp16={use_fp16})...")
+        result = model.transcribe(audio_path, language=None, fp16=use_fp16)
         _log("Transkripsi selesai.")
         return result
     except Exception as e:
@@ -99,7 +123,7 @@ AUDIO_EXT = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
 def process_media_to_subtitle(
     input_path: str,
     output_dir: str,
-    model_size: str = "base",
+    model_size: str = "large",
     subtitle_formats: list[str] = None,
     log_callback=None
 ) -> dict[str, str]:

@@ -10,7 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.services import process_media_to_subtitle
+from app.services import get_device_info, process_media_to_subtitle
 
 app = FastAPI(title="Autocaption Web", version="1.0.0")
 
@@ -42,7 +42,7 @@ async def root():
 @app.post("/api/upload")
 async def upload_and_process(
     file: UploadFile = File(...),
-    model_size: str = Form("base"),
+    model_size: str = Form("large"),
     format: str = Form("srt"),
 ):
     """
@@ -140,3 +140,16 @@ async def download_subtitle(filename: str):
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/device")
+async def device_info():
+    """Info deteksi GPU untuk tampilan di UI."""
+    import torch
+    if torch.cuda.is_available():
+        return {
+            "device": "cuda",
+            "use_fp16": True,
+            "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "N/A",
+        }
+    return {"device": "cpu", "use_fp16": False, "gpu_name": None}
